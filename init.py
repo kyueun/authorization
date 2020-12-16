@@ -1,6 +1,8 @@
 from flask import Flask, render_template, request
 from flask_jwt_extended import *
 from multiprocessing import Process
+from DBmanage import register, login
+from error import *
 
 auth_app = Flask(__name__)
 auth_app.config['SERVER_NAME'] = 'localhost:5000'
@@ -22,16 +24,43 @@ def home():
 def register():
     if request.method == 'GET':
         return 'register::get'
+
     elif request.method == 'POST':
-        return 'register::post'
+        data = request.form.to_dict()
+
+        try:
+            register(email=data['email'], pw=data['pw'], name=data['name'])
+
+            result = 'register::post'
+
+        except Exception as e:
+            if e is duplicate_user:
+                result = 'duplicated'
+
+            elif e is disable:
+                result = 'try again'
+
+        return result
 
 
 @auth_app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'GET':
         return 'login::get'
+
     elif request.method == 'POST':
-        return 'login::post'
+        data = request.form.to_dict()
+
+        try:
+            login(email=data['email'], pw=data['pw'])
+
+            result = 'login::post'
+
+        except Exception as e:
+            if e is no_user:
+                result = 'try again'
+
+        return result
 
 
 @auth_app.route('/user', methods=['GET'])
