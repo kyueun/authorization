@@ -1,4 +1,4 @@
-import pymysql
+import pymysql, bcrypt
 from error import *
 
 
@@ -45,7 +45,7 @@ def find_user(index=None, email=None, name=None):
 
 def register(email, pw, name):
     try:
-        usr = find_user(email=email)
+        find_user(email=email)
 
         raise duplicate_user
 
@@ -59,9 +59,13 @@ def register(email, pw, name):
     conn = get_connection()
     cursor = conn.cursor(pymysql.cursors.DictCursor)
 
-    sql = 'insert into user(email, hashed_pw, name) values({email}, {hashed_pw}, {name})'\
-        .format(email=email, hashed_pw=pw, name=name)
+    hashed_pw = bcrypt.hashpw(pw.encode('utf-8'), bcrypt.gensalt()).hex()
+
+    sql = 'insert into user(email, hashed_pw, name) values({email}, {hashed_pw}, {name})' \
+        .format(email=email, hashed_pw=hashed_pw, name=name)
+
     cursor.execute(sql)
+
     result = cursor.fetchone()
 
     if result is None:
@@ -79,7 +83,7 @@ def register(email, pw, name):
 def login(email=None, pw=None):
     usr = find_user(email=email)
 
-    if pw != usr['hashed_pw']:
+    if not bcrypt.checkpw(password=pw.encode('utf-8'), hashed_password=usr['hashed_pw'].encode('utf-8')):
         raise no_user
 
-    return
+    return usr
