@@ -1,3 +1,4 @@
+import bcrypt
 import pymysql
 from error import *
 
@@ -15,18 +16,18 @@ def find_user(index=None, email=None, name=None):
     result = None
 
     if index is not None:
-        sql = 'select * from user where index=%s'
-        cursor.execute(sql, [index])
+        sql = "select * from user where index={}".format(index)
+        cursor.execute(sql)
         result = cursor.fetchone()
 
     elif email is not None:
-        sql = 'select * from user where email=%s'
-        cursor.execute(sql, [email])
+        sql = "select * from user where email='{}'".format(email)
+        cursor.execute(sql)
         result = cursor.fetchone()
 
     elif name is not None:
-        sql = 'select * from user where name=%s'
-        cursor.execute(sql, [name])
+        sql = "select * from user where name='{}'".format(name)
+        cursor.execute(sql)
         result = cursor.fetchall()
 
     if result is None:
@@ -45,13 +46,16 @@ def find_user(index=None, email=None, name=None):
 
 def register(email, pw, name):
     try:
-        usr = find_user(email=email)
+        find_user(email=email)
 
         raise duplicate_user
 
     except Exception as e:
-        if e is no_user:
+        if type(e) is no_user:
             pass
+
+        elif type(e) is duplicate_user:
+            raise duplicate_user
 
         else:
             raise disable
@@ -59,8 +63,14 @@ def register(email, pw, name):
     conn = get_connection()
     cursor = conn.cursor(pymysql.cursors.DictCursor)
 
-    sql = 'insert into user(email, hashed_pw, name) values({email}, {hashed_pw}, {name})'\
-        .format(email=email, hashed_pw=pw, name=name)
+    hashed_pw = bcrypt.hashpw(pw.encode('utf-8'), bcrypt.gensalt()).hex()
+
+    sql = "insert into user(email, hashed_pw, name) values('{email}', x'{hashed_pw}', '{name}')" \
+        .format(email=email, hashed_pw=hashed_pw, name=name)
+
+    cursor.execute(sql)
+
+    sql = "select * from user where email='{}'".format(email)
     cursor.execute(sql)
     result = cursor.fetchone()
 
@@ -79,7 +89,7 @@ def register(email, pw, name):
 def login(email=None, pw=None):
     usr = find_user(email=email)
 
-    if pw != usr['hashed_pw']:
+    if not bcrypt.checkpw(password=pw.encode('utf-8'), hashed_password=usr['hashed_pw'].encode('utf-8')):
         raise no_user
 
-    return
+    return usr['email']
