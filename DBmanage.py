@@ -71,7 +71,9 @@ def register(email, pw, name):
     cursor.execute(sql)
 
     sql = "select * from user where email='{}'".format(email)
+
     cursor.execute(sql)
+
     result = cursor.fetchone()
 
     if result is None:
@@ -92,4 +94,4 @@ def login(email=None, pw=None):
     if not bcrypt.checkpw(password=pw.encode('utf-8'), hashed_password=usr['hashed_pw'].encode('utf-8')):
         raise no_user
 
-    return usr['email']
+    return usr
