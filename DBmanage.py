@@ -9,6 +9,22 @@ def get_connection():
     return conn
 
 
+def get_all_user():
+    conn = get_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+
+    sql = 'select * from user where registered<1'
+    cursor.execute(sql)
+    result = cursor.fetchall()
+
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return result
+
+
 def find_user(index=None, email=None, name=None):
     conn = get_connection()
     cursor = conn.cursor(pymysql.cursors.DictCursor)
