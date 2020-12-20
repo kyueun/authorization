@@ -1,120 +1,160 @@
-from flask import Flask, render_template, request
-from flask_jwt_extended import *
-from multiprocessing import Process
-from DBmanage import register, login
+from datetime import datetime, timedelta
+from functools import wraps
+from flask import Flask, render_template, request, jsonify, redirect, g, render_template_string
+import jwt
+from requests import Response
+from DBmanage import *
 from error import *
 
 auth_app = Flask(__name__)
 auth_app.config['SERVER_NAME'] = 'localhost:5000'
+auth_app.config['JWT_SECRET_KEY'] = 'JWT_SECRET_KEY'
+auth_app.config['JWT_TOKEN_LOCATION'] = ['headers']
 auth_app.secret_key = b'aXth_sXcrXt_kXX'
-
-api_app = Flask(__name__)
-api_app.config['SERVER_NAME'] = 'localhost:5001'
-api_app.secret_key = b'apX_sXcrXt_kXX'
 
 
 ### authorization server
 
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        access_token = request.headers.get('Authorization')
+
+        if access_token is not None:
+            try:
+                payload = jwt.decode(access_token, auth_app.config['JWT_SECRET_KEY'], 'HS256')
+
+            except jwt.InvalidTokenError:
+                payload = None
+
+            if payload is None:
+                return Response(status=401)
+
+            usr_email = payload['email']
+            g.user_id = usr_email
+            g.user = find_user(email=usr_email) if usr_email else None
+
+        else:
+            return 'Users Only'
+
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+def register_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        access_token = request.headers.get('Authorization')
+
+        if access_token is not None:
+            try:
+                payload = jwt.decode(access_token, auth_app.config['JWT_SECRET_KEY'], 'HS256')
+
+                if not payload['registered']:
+                    raise jwt.InvalidTokenError
+
+            except jwt.InvalidTokenError:
+                payload = None
+
+            if payload is None:
+                return Response(status=401)
+
+            usr_email = payload['email']
+            g.usr_email = usr_email
+            g.usr = find_user(email=usr_email) if usr_email else None
+
+        else:
+            return 'Managers Only'
+
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 @auth_app.route('/')
-def home():
-    return "render_template('index.html')"
+def auth_home():
+    return 'home'
 
 
 @auth_app.route('/register', methods=['GET', 'POST'])
-def register():
+def auth_register():
     if request.method == 'GET':
-        return 'register::get'
+        return render_template('register.html')
 
     elif request.method == 'POST':
         data = request.form.to_dict()
 
+        result = None
         try:
-            register(email=data['email'], pw=data['pw'], name=data['name'])
+            register(email=data['email'], pw=data['pass'], name=data['name'])
 
-            result = 'register::post'
+            return redirect('/')
 
         except Exception as e:
-            if e is duplicate_user:
-                result = 'duplicated'
+            if type(e) is duplicate_user:
+                result = 'registered account'
 
-            elif e is disable:
+            elif type(e) is disable:
                 result = 'try again'
 
-        return result
+        return render_template('register.html', msg=result)
 
 
 @auth_app.route('/login', methods=['GET', 'POST'])
-def login():
+def auth_login():
     if request.method == 'GET':
-        return 'login::get'
+        return render_template('login.html')
 
     elif request.method == 'POST':
         data = request.form.to_dict()
 
-        try:
-            login(email=data['email'], pw=data['pw'])
+        result = None
 
-            result = 'login::post'
+        try:
+            usr = login(email=data['email'], pw=data['pass'])
+
+            payload = {
+                'email': usr['email'],
+                'exp': datetime.utcnow() + timedelta(seconds=60 * 60 * 24)
+            }
+
+            token = jwt.encode(payload, auth_app.config['JWT_SECRET_KEY'], algorithm='HS256', headers={'Authorization': '*'})
+
+            return jsonify({
+                'access_token': token.decode('utf-8')
+            })
 
         except Exception as e:
-            if e is no_user:
+            if type(e) is no_user:
+                result = 'no such user'
+
+            else:
+                print(type(e))
+                print(e)
                 result = 'try again'
 
-        return result
+        return render_template('login.html', msg=result)
 
 
 @auth_app.route('/user', methods=['GET'])
-@jwt_required
-def user():
+@login_required
+def auth_user():
     if request.method == 'GET':
-        return 'user::get'
+        return 'hello, {}!'.format(g.user['name'])
+
+    return 'Bad Request', 401
 
 
 @auth_app.route('/manage', methods=['GET'])
-@jwt_required
-def manage():
+#@register_required
+def auth_manage():
     if request.method == 'GET':
-        return 'manage::get'
+        result = get_all_user()
 
+        return
 
-def start_auth(debug, port):
-    auth_app.run(debug=debug, port=port)
-
-
-### api server
-
-@api_app.route('/')
-def api_home():
-    return 'api_home'
-
-
-@api_app.route('/create/<id>', methods=['GET'])
-def create(id):
-    if request.method == 'GET':
-        return 'create::get, id={}'.format(id)
-
-
-@api_app.route('/refresh/<id>', methods=['GET'])
-def refresh(id):
-    if request.method == 'GET':
-        return 'refresh::get, id={}'.format(id)
-
-
-def start_api(debug, port):
-    api_app.run(debug=debug, port=port)
-
-
-def process(target, args):
-    proc = Process(target=target, args=args)
-    proc.daemon = True
-    proc.start()
-
-    return proc
+    return '??', 401
 
 
 if __name__ == '__main__':
-    auth_p = process(target=start_auth, args=(False, 5000))
-    api_p = process(target=start_api, args=(False, 5001))
-
-    auth_p.join()
-    api_p.join()
+    auth_app.run(debug=True)
