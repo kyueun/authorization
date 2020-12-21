@@ -5,12 +5,14 @@ import jwt
 from requests import Response
 from DBmanage import *
 from error import *
+from table import *
 
 auth_app = Flask(__name__)
 auth_app.config['SERVER_NAME'] = 'localhost:5000'
 auth_app.config['JWT_SECRET_KEY'] = 'JWT_SECRET_KEY'
 auth_app.config['JWT_TOKEN_LOCATION'] = ['headers']
 auth_app.secret_key = b'aXth_sXcrXt_kXX'
+
 
 
 ### authorization server
@@ -118,7 +120,9 @@ def auth_login():
                 'exp': datetime.utcnow() + timedelta(seconds=60 * 60 * 24)
             }
 
+            print('before token encode')
             token = jwt.encode(payload, auth_app.config['JWT_SECRET_KEY'], algorithm='HS256', headers={'Authorization': '*'})
+            print('after token encode')
 
             return jsonify({
                 'access_token': token.decode('utf-8')
@@ -146,12 +150,18 @@ def auth_user():
 
 
 @auth_app.route('/manage', methods=['GET'])
-#@register_required
+@register_required
 def auth_manage():
     if request.method == 'GET':
         result = get_all_user()
 
-        return
+        items = []
+        for usr in result:
+            items.append(Item(usr['name'], usr['email']))
+
+        table = item_table(items)
+
+        return render_template_string(table.__html__())
 
     return '??', 401
 
